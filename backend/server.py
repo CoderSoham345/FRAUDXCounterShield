@@ -147,7 +147,15 @@ Keep response concise and professional."""
         return {"analysis": ai_response, "success": True}
     except Exception as e:
         logging.error(f"AI analysis error: {e}")
-        return {"analysis": "AI analysis unavailable. Using rule-based detection.", "success": False}
+        # Fallback to rule-based explanation
+        reasons = []
+        if transaction_data['amount'] > user_data['avg_spending'] * 3:
+            reasons.append(f"Amount is {int(transaction_data['amount']/user_data['avg_spending'])}x higher than usual")
+        if transaction_data['location']['city'] != user_data['usual_location']['city']:
+            reasons.append(f"Transaction from unusual location: {transaction_data['location']['city']}")
+        
+        fallback = "Transaction analyzed using rule-based detection. " + " ".join(reasons) if reasons else "Transaction appears normal based on your spending patterns."
+        return {"analysis": fallback, "success": False}
 
 def calculate_risk_score(transaction: dict, user: dict) -> dict:
     """Calculate fraud risk score based on rules"""
