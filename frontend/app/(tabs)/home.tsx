@@ -94,10 +94,13 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.fraudTipsCard}>
-          <Text style={styles.fraudTipsTitle}>🚨 Recent Fraud Alert</Text>
-          <Text style={styles.fraudTipsText}>Beware of fake UPI apps! Always verify merchant details before payment.</Text>
-        </View>
+        <TouchableOpacity style={styles.fraudTipsCard} onPress={() => router.push('/fraud-news')}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fraudTipsTitle}>🚨 Recent Fraud Alert</Text>
+            <Text style={styles.fraudTipsText}>Beware of fake UPI apps! Always verify merchant details before payment.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#ef4444" />
+        </TouchableOpacity>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
