@@ -86,7 +86,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.actionText}>Scan & Pay</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/add-money')}>
             <View style={[styles.actionIcon, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
               <Text style={styles.actionEmoji}>💳</Text>
             </View>
@@ -111,7 +111,7 @@ export default function HomeScreen() {
           </View>
 
           {DUMMY_TRANSACTIONS.map((tx) => (
-            <View key={tx.id} style={styles.transactionCard}>
+            <TouchableOpacity key={tx.id} style={styles.transactionCard} onPress={() => router.push('/transaction-detail')}>
               <View style={styles.transactionLeft}>
                 <View style={[styles.txIcon, { backgroundColor: `${tx.color}20` }]}>
                   <Ionicons name={tx.icon as any} size={20} color={tx.color} />
@@ -128,7 +128,7 @@ export default function HomeScreen() {
                   <Text style={[styles.riskText, { color: tx.color }]}>{tx.alert || ''} {tx.riskLevel}</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
 
