@@ -9,6 +9,29 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
+  const handleLogout = () => {
+    Alert.alert(
+      '🚪 Logout',
+      'Are you sure you want to logout from FraudX?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              router.replace('/login');
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const personalInfo = [
     { icon: 'person', label: 'Full Name', value: user?.name || 'Rajesh Kumar' },
     { icon: 'call', label: 'Mobile', value: user?.mobile || '+91 9876543210' },
