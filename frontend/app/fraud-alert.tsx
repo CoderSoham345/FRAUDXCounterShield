@@ -10,7 +10,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';

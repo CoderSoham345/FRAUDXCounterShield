@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function WelcomeScreen() {
