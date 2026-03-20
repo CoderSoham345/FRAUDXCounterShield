@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -142,22 +142,30 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>❓ Help & Support</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.helpRow}>
+            <TouchableOpacity style={styles.helpRow} onPress={() => Alert.alert('💬 Live Chat', 'Connecting you to our support agent...\n\nDemo: This would open live chat in production.', [{ text: 'OK' }])}>
               <Ionicons name="chatbubbles" size={20} color="#3b82f6" />
               <Text style={styles.helpText}>Live Chat Support</Text>
               <Ionicons name="chevron-forward" size={20} color="#6b7280" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.helpRow}>
+            <TouchableOpacity style={styles.helpRow} onPress={() => {
+              Linking.openURL('tel:18001234567').catch(() => 
+                Alert.alert('Call Support', 'Dial: 1800-123-4567')
+              );
+            }}>
               <Ionicons name="call" size={20} color="#3b82f6" />
               <Text style={styles.helpText}>Call: 1800-123-4567</Text>
               <Ionicons name="chevron-forward" size={20} color="#6b7280" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.helpRow}>
+            <TouchableOpacity style={styles.helpRow} onPress={() => {
+              Linking.openURL('mailto:support@fraudx.com?subject=FraudX Support Request').catch(() =>
+                Alert.alert('Email Support', 'Email us at: support@fraudx.com')
+              );
+            }}>
               <Ionicons name="mail" size={20} color="#3b82f6" />
               <Text style={styles.helpText}>Email: support@fraudx.com</Text>
               <Ionicons name="chevron-forward" size={20} color="#6b7280" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.helpRow}>
+            <TouchableOpacity style={styles.helpRow} onPress={() => Alert.alert('📚 FAQs', 'Common questions and answers about FraudX.\n\nDemo: This would open FAQ page in production.', [{ text: 'OK' }])}>
               <Ionicons name="help-circle" size={20} color="#3b82f6" />
               <Text style={styles.helpText}>FAQs & Help Center</Text>
               <Ionicons name="chevron-forward" size={20} color="#6b7280" />
@@ -165,14 +173,9 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={() => {
-          Alert.alert('Logout', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', style: 'destructive', onPress: async () => { await logout(); router.replace('/login'); } },
-          ]);
-        }}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out" size={20} color="#ef4444" />
-          <Text style={styles.logoutText}>Logout</Text>
+          <Text style={styles.logoutText}>Logout from FraudX</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
