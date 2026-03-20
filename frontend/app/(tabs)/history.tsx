@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,39 +16,60 @@ import { format } from 'date-fns';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL;
 
+const DUMMY_TRANSACTIONS = [
+  { id: '1', recipient: '🛒 Grocery Store', amount: 250, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), riskLevel: 'SAFE', riskScore: 10, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: [] },
+  { id: '2', recipient: '📦 Amazon', amount: 799, timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000), riskLevel: 'SAFE', riskScore: 15, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: [] },
+  { id: '3', recipient: '❓ Unknown Merchant', amount: 12500, timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), riskLevel: 'HIGH', riskScore: 90, status: 'blocked', location: { city: 'Delhi' }, fraud_reasons: ['High amount', 'Unknown merchant'] },
+  { id: '4', recipient: '🍔 Swiggy', amount: 1200, timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000), riskLevel: 'MEDIUM', riskScore: 50, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: ['Late night transaction'] },
+  { id: '5', recipient: '📍 Fuel Station Delhi', amount: 5000, timestamp: new Date(Date.now() - 72 * 60 * 60 * 1000), riskLevel: 'HIGH', riskScore: 85, status: 'blocked', location: { city: 'Delhi' }, fraud_reasons: ['New location', 'High amount'] },
+  { id: '6', recipient: '🏪 Local Store', amount: 450, timestamp: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), riskLevel: 'SAFE', riskScore: 12, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: [] },
+  { id: '7', recipient: '💊 Medical Store', amount: 890, timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), riskLevel: 'SAFE', riskScore: 8, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: [] },
+  { id: '8', recipient: '🎬 Movie Tickets', amount: 1500, timestamp: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000), riskLevel: 'SAFE', riskScore: 20, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: [] },
+  { id: '9', recipient: '⚡ Electricity Bill', amount: 3200, timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), riskLevel: 'SAFE', riskScore: 5, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: [] },
+  { id: '10', recipient: '🏦 Credit Card Payment', amount: 15000, timestamp: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), riskLevel: 'MEDIUM', riskScore: 45, status: 'completed', location: { city: 'Mumbai' }, fraud_reasons: ['High amount'] },
+];
+
 export default function HistoryScreen() {
+  const router = useRouter();
   const { token } = useAuth();
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState(DUMMY_TRANSACTIONS);
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchTransactions();
-  }, []);
+    if (token && token !== 'demo-token') {
+      fetchTransactions();
+    }
+  }, [token]);
 
   const fetchTransactions = async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/transaction/history?token=${token}`);
       const data = await response.json();
-      setTransactions(data);
+      if (data && data.length > 0) {
+        setTransactions(data);
+      }
     } catch (error) {
-      console.error('Failed to fetch transactions:', error);
+      console.log('Using dummy data');
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTransactions();
+    if (token && token !== 'demo-token') {
+      fetchTransactions();
+    } else {
+      setTimeout(() => setRefreshing(false), 1000);
+    }
   };
 
   const getRiskColor = (level: string) => {
     switch (level) {
       case 'HIGH': return '#ef4444';
       case 'MEDIUM': return '#f59e0b';
-      case 'LOW': return '#10b981';
+      case 'SAFE': case 'LOW': return '#10b981';
       default: return '#6b7280';
     }
   };
@@ -62,11 +84,11 @@ export default function HistoryScreen() {
   };
 
   const renderTransaction = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.transactionCard}>
+    <TouchableOpacity style={styles.transactionCard} onPress={() => router.push('/transaction-detail')}>
       <View style={styles.cardHeader}>
         <View style={styles.transactionLeft}>
-          <View style={[styles.txIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-            <Ionicons name="arrow-up" size={20} color="#ef4444" />
+          <View style={[styles.txIcon, { backgroundColor: `${getRiskColor(item.riskLevel)}20` }]}>
+            <Ionicons name="arrow-up" size={20} color={getRiskColor(item.riskLevel)} />
           </View>
           <View style={styles.txDetails}>
             <Text style={styles.txRecipient}>{item.recipient}</Text>
@@ -94,17 +116,17 @@ export default function HistoryScreen() {
               style={[
                 styles.riskMeterFill,
                 {
-                  width: `${item.risk_score}%`,
-                  backgroundColor: getRiskColor(item.risk_level),
+                  width: `${item.riskScore}%`,
+                  backgroundColor: getRiskColor(item.riskLevel),
                 },
               ]}
             />
           </View>
-          <Text style={styles.riskScore}>Risk Score: {item.risk_score}/100</Text>
+          <Text style={styles.riskScore}>Risk Score: {item.riskScore}/100</Text>
         </View>
-        <View style={[styles.riskBadge, { backgroundColor: `${getRiskColor(item.risk_level)}20` }]}>
-          <Text style={[styles.riskText, { color: getRiskColor(item.risk_level) }]}>
-            {item.risk_level}
+        <View style={[styles.riskBadge, { backgroundColor: `${getRiskColor(item.riskLevel)}20` }]}>
+          <Text style={[styles.riskText, { color: getRiskColor(item.riskLevel) }]}>
+            {item.riskLevel}
           </Text>
         </View>
       </View>
@@ -122,21 +144,13 @@ export default function HistoryScreen() {
     </TouchableOpacity>
   );
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Transaction History</Text>
-        <TouchableOpacity style={styles.filterButton}>
-          <Ionicons name="filter" size={20} color="#3b82f6" />
-        </TouchableOpacity>
+        <View style={styles.headerBadge}>
+          <Text style={styles.headerBadgeText}>{transactions.length} Total</Text>
+        </View>
       </View>
 
       <FlatList
@@ -159,154 +173,34 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContainer: {
-    padding: 20,
-  },
-  loadingText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 100,
-  },
-  transactionCard: {
-    backgroundColor: '#1f2937',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#374151',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  transactionLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    flex: 1,
-  },
-  txIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  txDetails: {
-    flex: 1,
-  },
-  txRecipient: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  txTime: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginBottom: 2,
-  },
-  txLocation: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  transactionRight: {
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  txAmount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#ef4444',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  riskSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  riskMeter: {
-    flex: 1,
-    marginRight: 12,
-  },
-  riskMeterBg: {
-    height: 8,
-    backgroundColor: '#374151',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  riskMeterFill: {
-    height: '100%',
-  },
-  riskScore: {
-    fontSize: 10,
-    color: '#9ca3af',
-  },
-  riskBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  riskText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  reasonsSection: {
-    gap: 6,
-  },
-  reasonItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  reasonText: {
-    fontSize: 12,
-    color: '#d1d5db',
-    flex: 1,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 80,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#6b7280',
-    marginTop: 16,
-  },
+  container: { flex: 1, backgroundColor: '#0a0a0a' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
+  headerBadge: { backgroundColor: 'rgba(59, 130, 246, 0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  headerBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#3b82f6' },
+  listContainer: { padding: 20 },
+  transactionCard: { backgroundColor: '#1f2937', padding: 16, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#374151' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  transactionLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, flex: 1 },
+  txIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  txDetails: { flex: 1 },
+  txRecipient: { fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 4 },
+  txTime: { fontSize: 12, color: '#9ca3af', marginBottom: 2 },
+  txLocation: { fontSize: 12, color: '#6b7280' },
+  transactionRight: { alignItems: 'flex-end', gap: 6 },
+  txAmount: { fontSize: 18, fontWeight: 'bold', color: '#ef4444' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { fontSize: 10, fontWeight: '600' },
+  riskSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  riskMeter: { flex: 1, marginRight: 12 },
+  riskMeterBg: { height: 8, backgroundColor: '#374151', borderRadius: 4, overflow: 'hidden', marginBottom: 4 },
+  riskMeterFill: { height: '100%' },
+  riskScore: { fontSize: 10, color: '#9ca3af' },
+  riskBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  riskText: { fontSize: 12, fontWeight: 'bold' },
+  reasonsSection: { gap: 6 },
+  reasonItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reasonText: { fontSize: 12, color: '#d1d5db', flex: 1 },
+  emptyState: { alignItems: 'center', paddingVertical: 80 },
+  emptyText: { fontSize: 16, color: '#6b7280', marginTop: 16 },
 });

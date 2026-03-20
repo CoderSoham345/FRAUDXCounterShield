@@ -46,6 +46,8 @@ export default function ProfileScreen() {
     { label: 'IFSC Code', value: 'HDFC0001234' },
     { label: 'Account Type', value: 'Savings Account' },
     { label: 'Branch', value: 'Andheri West, Mumbai' },
+    { label: 'Card Expiry', value: '12/2028' },
+    { label: 'CVV', value: 'XXX' },
   ];
 
   const securitySettings = [
