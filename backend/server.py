@@ -1,508 +1,414 @@
-from fastapi import FastAPI, APIRouter, HTTPException
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import List, Optional
-import uuid
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List
+import jwt
+import bcrypt
 from datetime import datetime, timedelta
-import random
-import asyncio
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+import sqlite3
+import json
+import time
+from collections import defaultdict
+import re
+from urllib.parse import parse_qs, urlparse
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL'].strip('"')
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME'].strip('"')]
-
-# Create the main app
 app = FastAPI()
-api_router = APIRouter(prefix="/api")
 
-# Get Emergent LLM Key
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
+# Security Config
+SECRET_KEY = "fraudx-secret-key-2024"
+ALGORITHM = "HS256"
+TOKEN_EXPIRE_HOURS = 24
 
-# ==================== Models ====================
-class SendOTPRequest(BaseModel):
-    mobile: str
+# Rate limiting
+rate_limit_store = defaultdict(list)
+RATE_LIMIT = 10  # requests per minute
 
-class VerifyOTPRequest(BaseModel):
-    mobile: str
-    otp: str
+# Database
+def get_db():
+    conn = sqlite3.connect('fraudx.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-class AuthResponse(BaseModel):
-    success: bool
-    message: str
-    token: Optional[str] = None
-    user: Optional[dict] = None
-
-class UserProfile(BaseModel):
-    mobile: str
-    name: str
-    balance: float
-    usual_location: dict
-    avg_spending: float
-    created_at: datetime
-
-class TransactionInitiate(BaseModel):
-    recipient: str
-    amount: float
-    location: dict
-
-class TransactionAnalysis(BaseModel):
-    transaction_id: str
-    is_suspicious: bool
-    risk_score: int
-    risk_level: str
-    fraud_reasons: List[str]
-    ai_analysis: str
-
-class TransactionConfirm(BaseModel):
-    transaction_id: str
-    action: str  # "allow" or "block"
-
-class TransactionHistory(BaseModel):
-    id: str
-    recipient: str
-    amount: float
-    timestamp: datetime
-    location: dict
-    risk_score: int
-    risk_level: str
-    status: str
-    fraud_reasons: List[str]
-
-class FreezeAccount(BaseModel):
-    duration: int  # seconds
-
-# ==================== Helper Functions ====================
-async def get_user_by_mobile(mobile: str):
-    """Get user from database"""
-    user = await db.users.find_one({"mobile": mobile})
-    return user
-
-async def create_default_user(mobile: str):
-    """Create a new user with default values"""
-    user = {
-        "mobile": mobile,
-        "name": f"User {mobile[-4:]}",
-        "balance": 50000.0,  # ₹50,000 default balance
-        "usual_location": {
-            "city": "Mumbai",
-            "lat": 19.0760,
-            "lng": 72.8777
-        },
-        "avg_spending": 3000.0,  # ₹3,000 average
-        "transaction_times": ["09:00", "14:00", "19:00"],  # Usual times
-        "created_at": datetime.utcnow(),
-        "is_frozen": False,
-        "freeze_until": None
-    }
-    await db.users.insert_one(user)
-    return user
-
-async def analyze_transaction_with_ai(transaction_data: dict, user_data: dict) -> dict:
-    """Use AI to analyze transaction for fraud"""
-    try:
-        # Create AI chat instance
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"fraud-analysis-{uuid.uuid4()}",
-            system_message="You are a fraud detection AI expert. Analyze transactions and provide risk assessment."
-        ).with_model("openai", "gpt-5.2")
-        
-        # Prepare analysis prompt
-        current_hour = datetime.utcnow().hour
-        prompt = f"""Analyze this UPI transaction for fraud:
-
-Transaction Details:
-- Amount: ₹{transaction_data['amount']}
-- Recipient: {transaction_data['recipient']}
-- Time: {current_hour}:00 hrs
-- Location: {transaction_data['location']['city']}
-
-User Profile:
-- Usual Location: {user_data['usual_location']['city']}
-- Average Spending: ₹{user_data['avg_spending']}
-- Current Balance: ₹{user_data['balance']}
-
-Provide a brief fraud risk assessment (2-3 sentences) focusing on:
-1. Amount compared to average spending
-2. Location anomaly
-3. Time of transaction
-4. Overall risk level
-
-Keep response concise and professional."""
-
-        # Get AI response
-        message = UserMessage(text=prompt)
-        ai_response = await chat.send_message(message)
-        
-        return {"analysis": ai_response, "success": True}
-    except Exception as e:
-        logging.error(f"AI analysis error: {e}")
-        # Fallback to rule-based explanation
-        reasons = []
-        if transaction_data['amount'] > user_data['avg_spending'] * 3:
-            reasons.append(f"Amount is {int(transaction_data['amount']/user_data['avg_spending'])}x higher than usual")
-        if transaction_data['location']['city'] != user_data['usual_location']['city']:
-            reasons.append(f"Transaction from unusual location: {transaction_data['location']['city']}")
-        
-        fallback = "Transaction analyzed using rule-based detection. " + " ".join(reasons) if reasons else "Transaction appears normal based on your spending patterns."
-        return {"analysis": fallback, "success": False}
-
-def calculate_risk_score(transaction: dict, user: dict) -> dict:
-    """Calculate fraud risk score based on rules"""
-    risk_score = 0
-    fraud_reasons = []
-    
-    # Check 1: High amount
-    if transaction['amount'] > 10000:
-        risk_score += 40
-        fraud_reasons.append(f"High amount transaction (₹{transaction['amount']})")
-    
-    # Check 2: Amount compared to average
-    if transaction['amount'] > user['avg_spending'] * 3:
-        risk_score += 30
-        fraud_reasons.append(f"{int(transaction['amount']/user['avg_spending'])}x higher than usual spending")
-    
-    # Check 3: Location mismatch
-    if transaction['location']['city'] != user['usual_location']['city']:
-        risk_score += 25
-        fraud_reasons.append(f"Transaction from {transaction['location']['city']} (usual: {user['usual_location']['city']})")
-    
-    # Check 4: Unusual time (1 AM - 5 AM)
-    current_hour = datetime.utcnow().hour
-    if 1 <= current_hour <= 5:
-        risk_score += 20
-        fraud_reasons.append(f"Unusual time: {current_hour}:00 hrs")
-    
-    # Determine risk level
-    if risk_score >= 60:
-        risk_level = "HIGH"
-    elif risk_score >= 30:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "LOW"
-    
-    return {
-        "risk_score": min(risk_score, 100),
-        "risk_level": risk_level,
-        "fraud_reasons": fraud_reasons,
-        "is_suspicious": risk_score >= 30
-    }
-
-# ==================== API Endpoints ====================
-@api_router.post("/auth/send-otp", response_model=AuthResponse)
-async def send_otp(request: SendOTPRequest):
-    """Send OTP to mobile number (mock implementation)"""
-    try:
-        # Generate mock OTP
-        otp = "123456"  # Fixed OTP for demo
-        
-        # Store OTP in database with expiry
-        await db.otps.insert_one({
-            "mobile": request.mobile,
-            "otp": otp,
-            "created_at": datetime.utcnow(),
-            "expires_at": datetime.utcnow() + timedelta(minutes=5)
-        })
-        
-        return AuthResponse(
-            success=True,
-            message=f"OTP sent to {request.mobile} (Demo OTP: 123456)"
+# Initialize DB
+def init_db():
+    conn = get_db()
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mobile TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            name TEXT,
+            balance REAL DEFAULT 50000.0,
+            usual_location TEXT,
+            avg_spending REAL DEFAULT 3000.0,
+            created_at TEXT
         )
-    except Exception as e:
-        logging.error(f"Send OTP error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.post("/auth/verify-otp", response_model=AuthResponse)
-async def verify_otp(request: VerifyOTPRequest):
-    """Verify OTP and login"""
-    try:
-        # Check OTP
-        otp_record = await db.otps.find_one({
-            "mobile": request.mobile,
-            "otp": request.otp
-        })
-        
-        if not otp_record:
-            return AuthResponse(success=False, message="Invalid OTP")
-        
-        # Check expiry
-        if otp_record['expires_at'] < datetime.utcnow():
-            return AuthResponse(success=False, message="OTP expired")
-        
-        # Get or create user
-        user = await get_user_by_mobile(request.mobile)
-        if not user:
-            user = await create_default_user(request.mobile)
-        
-        # Create session token
-        token = str(uuid.uuid4())
-        await db.sessions.insert_one({
-            "token": token,
-            "mobile": request.mobile,
-            "created_at": datetime.utcnow(),
-            "expires_at": datetime.utcnow() + timedelta(days=30)
-        })
-        
-        # Clean up OTP
-        await db.otps.delete_many({"mobile": request.mobile})
-        
-        return AuthResponse(
-            success=True,
-            message="Login successful",
-            token=token,
-            user={
-                "mobile": user['mobile'],
-                "name": user['name'],
-                "balance": user['balance']
-            }
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount REAL,
+            receiver TEXT,
+            upi_id TEXT,
+            risk_score INTEGER,
+            status TEXT,
+            location TEXT,
+            device_id TEXT,
+            timestamp TEXT,
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
-    except Exception as e:
-        logging.error(f"Verify OTP error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/user/profile")
-async def get_profile(token: str):
-    """Get user profile"""
-    try:
-        # Verify token
-        session = await db.sessions.find_one({"token": token})
-        if not session:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Get user
-        user = await get_user_by_mobile(session['mobile'])
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Check if account is frozen
-        is_frozen = False
-        freeze_until = None
-        if user.get('is_frozen') and user.get('freeze_until'):
-            if user['freeze_until'] > datetime.utcnow():
-                is_frozen = True
-                freeze_until = user['freeze_until'].isoformat()
-            else:
-                # Unfreeze account if time has passed
-                await db.users.update_one(
-                    {"mobile": user['mobile']},
-                    {"$set": {"is_frozen": False, "freeze_until": None}}
-                )
-        
-        return {
-            "mobile": user['mobile'],
-            "name": user['name'],
-            "balance": user['balance'],
-            "is_frozen": is_frozen,
-            "freeze_until": freeze_until
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Get profile error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.post("/transaction/initiate")
-async def initiate_transaction(request: TransactionInitiate, token: str):
-    """Initiate a transaction and analyze for fraud"""
-    try:
-        # Verify token
-        session = await db.sessions.find_one({"token": token})
-        if not session:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Get user
-        user = await get_user_by_mobile(session['mobile'])
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Check if frozen
-        if user.get('is_frozen') and user.get('freeze_until'):
-            if user['freeze_until'] > datetime.utcnow():
-                raise HTTPException(status_code=403, detail="Account is temporarily frozen")
-        
-        # Check balance
-        if user['balance'] < request.amount:
-            raise HTTPException(status_code=400, detail="Insufficient balance")
-        
-        # Calculate risk
-        transaction_data = {
-            "amount": request.amount,
-            "recipient": request.recipient,
-            "location": request.location
-        }
-        risk_data = calculate_risk_score(transaction_data, user)
-        
-        # Get AI analysis
-        ai_result = await analyze_transaction_with_ai(transaction_data, user)
-        
-        # Create transaction
-        transaction = {
-            "id": str(uuid.uuid4()),
-            "user_mobile": user['mobile'],
-            "recipient": request.recipient,
-            "amount": request.amount,
-            "location": request.location,
-            "timestamp": datetime.utcnow(),
-            "risk_score": risk_data['risk_score'],
-            "risk_level": risk_data['risk_level'],
-            "fraud_reasons": risk_data['fraud_reasons'],
-            "is_suspicious": risk_data['is_suspicious'],
-            "ai_analysis": ai_result['analysis'],
-            "status": "pending"
-        }
-        
-        await db.transactions.insert_one(transaction)
-        
-        return {
-            "transaction_id": transaction['id'],
-            "is_suspicious": risk_data['is_suspicious'],
-            "risk_score": risk_data['risk_score'],
-            "risk_level": risk_data['risk_level'],
-            "fraud_reasons": risk_data['fraud_reasons'],
-            "ai_analysis": ai_result['analysis']
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Initiate transaction error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.post("/transaction/confirm")
-async def confirm_transaction(request: TransactionConfirm, token: str):
-    """Confirm or block a transaction"""
-    try:
-        # Verify token
-        session = await db.sessions.find_one({"token": token})
-        if not session:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Get transaction
-        transaction = await db.transactions.find_one({"id": request.transaction_id})
-        if not transaction:
-            raise HTTPException(status_code=404, detail="Transaction not found")
-        
-        # Get user
-        user = await get_user_by_mobile(session['mobile'])
-        
-        if request.action == "allow":
-            # Process transaction
-            new_balance = user['balance'] - transaction['amount']
-            await db.users.update_one(
-                {"mobile": user['mobile']},
-                {"$set": {"balance": new_balance}}
-            )
-            await db.transactions.update_one(
-                {"id": request.transaction_id},
-                {"$set": {"status": "completed", "completed_at": datetime.utcnow()}}
-            )
-            return {"success": True, "message": "Transaction completed", "new_balance": new_balance}
-        
-        elif request.action == "block":
-            # Block transaction and freeze account
-            await db.transactions.update_one(
-                {"id": request.transaction_id},
-                {"$set": {"status": "blocked", "blocked_at": datetime.utcnow()}}
-            )
-            
-            # Freeze account for 30 seconds
-            freeze_until = datetime.utcnow() + timedelta(seconds=30)
-            await db.users.update_one(
-                {"mobile": user['mobile']},
-                {"$set": {"is_frozen": True, "freeze_until": freeze_until}}
-            )
-            
-            return {
-                "success": True,
-                "message": "Transaction blocked and account frozen",
-                "freeze_until": freeze_until.isoformat()
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Confirm transaction error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/transaction/history")
-async def get_transaction_history(token: str):
-    """Get transaction history"""
-    try:
-        # Verify token
-        session = await db.sessions.find_one({"token": token})
-        if not session:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Get transactions
-        transactions = await db.transactions.find(
-            {"user_mobile": session['mobile']}
-        ).sort("timestamp", -1).limit(50).to_list(50)
-        
-        return [{
-            "id": t['id'],
-            "recipient": t['recipient'],
-            "amount": t['amount'],
-            "timestamp": t['timestamp'].isoformat(),
-            "location": t['location'],
-            "risk_score": t['risk_score'],
-            "risk_level": t['risk_level'],
-            "status": t['status'],
-            "fraud_reasons": t['fraud_reasons']
-        } for t in transactions]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Get history error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.post("/account/unfreeze")
-async def unfreeze_account(token: str):
-    """Manually unfreeze account"""
-    try:
-        # Verify token
-        session = await db.sessions.find_one({"token": token})
-        if not session:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Unfreeze
-        await db.users.update_one(
-            {"mobile": session['mobile']},
-            {"$set": {"is_frozen": False, "freeze_until": None}}
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            latitude REAL,
+            longitude REAL,
+            city TEXT,
+            timestamp TEXT,
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
-        
-        return {"success": True, "message": "Account unfrozen"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Unfreeze error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS devices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            device_id TEXT,
+            first_seen TEXT,
+            last_seen TEXT,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# Include router
-app.include_router(api_router)
+init_db()
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Models
+class SignupRequest(BaseModel):
+    mobile: str
+    password: str
+    name: str
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+class LoginRequest(BaseModel):
+    mobile: str
+    password: str
+    device_id: Optional[str] = None
+
+class QRValidateRequest(BaseModel):
+    qr_string: str
+
+class TransactionRequest(BaseModel):
+    amount: float
+    upi_id: str
+    location: dict
+    device_id: Optional[str] = None
+
+class LocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+    city: str
+
+# Utils
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def create_token(user_id: int) -> str:
+    payload = {
+        "user_id": user_id,
+        "exp": datetime.utcnow() + timedelta(hours=TOKEN_EXPIRE_HOURS)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_token(token: str) -> int:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload["user_id"]
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# Rate Limiting
+def rate_limit_check(request: Request):
+    client_ip = request.client.host
+    now = time.time()
+    rate_limit_store[client_ip] = [t for t in rate_limit_store[client_ip] if now - t < 60]
+    if len(rate_limit_store[client_ip]) >= RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many requests")
+    rate_limit_store[client_ip].append(now)
+
+# Fraud Detection Engine
+def calculate_fraud_score(user_id: int, amount: float, device_id: str, location: dict) -> dict:
+    conn = get_db()
+    user = dict(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+    
+    score = 0
+    reasons = []
+    
+    # Check device
+    device = conn.execute("SELECT * FROM devices WHERE user_id=? AND device_id=?", 
+                         (user_id, device_id)).fetchone()
+    if not device:
+        score += 30
+        reasons.append("New device detected")
+    
+    # Check location
+    if user['usual_location']:
+        usual = json.loads(user['usual_location'])
+        if location['city'] != usual.get('city'):
+            score += 25
+            reasons.append(f"New location: {location['city']}")
+    
+    # Check amount
+    if amount > 10000:
+        score += 20
+        reasons.append(f"High amount: ₹{amount}")
+    
+    # Check rapid transactions
+    recent_txs = conn.execute(
+        "SELECT COUNT(*) as count FROM transactions WHERE user_id=? AND timestamp > ?",
+        (user_id, (datetime.now() - timedelta(minutes=5)).isoformat())
+    ).fetchone()
+    if recent_txs['count'] >= 3:
+        score += 15
+        reasons.append("Rapid transactions detected")
+    
+    # Check spending pattern
+    if amount > user['avg_spending'] * 3:
+        score += 10
+        reasons.append(f"{int(amount/user['avg_spending'])}x higher than usual")
+    
+    conn.close()
+    
+    # Determine status and action
+    if score >= 70:
+        status = "high"
+        action = "block"
+    elif score >= 40:
+        status = "medium"
+        action = "require_otp"
+    else:
+        status = "low"
+        action = "allow"
+    
+    return {
+        "risk_score": min(score, 100),
+        "status": status,
+        "action": action,
+        "reasons": reasons
+    }
+
+# QR Validation
+def validate_qr(qr_string: str) -> dict:
+    # Check if starts with upi://pay
+    if not qr_string.startswith("upi://pay"):
+        raise HTTPException(status_code=400, detail="Invalid QR code format")
+    
+    # Parse QR
+    try:
+        parsed = urlparse(qr_string)
+        params = parse_qs(parsed.query)
+        
+        upi_id = params.get('pa', [None])[0]
+        name = params.get('pn', [None])[0]
+        amount = params.get('am', [None])[0]
+        
+        if not upi_id:
+            raise HTTPException(status_code=400, detail="Missing UPI ID in QR")
+        
+        return {
+            "valid": True,
+            "upi_id": upi_id,
+            "name": name or "Unknown",
+            "amount": float(amount) if amount else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid QR: {str(e)}")
+
+# AUTH APIs
+@app.post("/api/auth/signup")
+def signup(req: SignupRequest, request: Request):
+    rate_limit_check(request)
+    conn = get_db()
+    
+    # Check if exists
+    existing = conn.execute("SELECT * FROM users WHERE mobile=?", (req.mobile,)).fetchone()
+    if existing:
+        raise HTTPException(status_code=400, detail="Mobile already registered")
+    
+    # Create user
+    hashed_pwd = hash_password(req.password)
+    conn.execute(
+        "INSERT INTO users (mobile, password, name, created_at) VALUES (?, ?, ?, ?)",
+        (req.mobile, hashed_pwd, req.name, datetime.now().isoformat())
+    )
+    conn.commit()
+    
+    user = dict(conn.execute("SELECT * FROM users WHERE mobile=?", (req.mobile,)).fetchone())
+    conn.close()
+    
+    token = create_token(user['id'])
+    return {"success": True, "token": token, "user": {"id": user['id'], "name": user['name'], "mobile": user['mobile'], "balance": user['balance']}}
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest, request: Request):
+    rate_limit_check(request)
+    conn = get_db()
+    
+    user = conn.execute("SELECT * FROM users WHERE mobile=?", (req.mobile,)).fetchone()
+    if not user or not verify_password(req.password, user['password']):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    user = dict(user)
+    
+    # Track device
+    if req.device_id:
+        device = conn.execute("SELECT * FROM devices WHERE user_id=? AND device_id=?", 
+                             (user['id'], req.device_id)).fetchone()
+        if not device:
+            conn.execute("INSERT INTO devices (user_id, device_id, first_seen, last_seen) VALUES (?, ?, ?, ?)",
+                        (user['id'], req.device_id, datetime.now().isoformat(), datetime.now().isoformat()))
+        else:
+            conn.execute("UPDATE devices SET last_seen=? WHERE user_id=? AND device_id=?",
+                        (datetime.now().isoformat(), user['id'], req.device_id))
+        conn.commit()
+    
+    conn.close()
+    
+    token = create_token(user['id'])
+    return {"success": True, "token": token, "user": {"id": user['id'], "name": user['name'], "mobile": user['mobile'], "balance": user['balance']}}
+
+# QR VALIDATION API
+@app.post("/api/scan/validate")
+def validate_qr_code(req: QRValidateRequest, authorization: str = Header(None), request: Request = None):
+    rate_limit_check(request)
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    verify_token(authorization.replace("Bearer ", ""))
+    return validate_qr(req.qr_string)
+
+# TRANSACTION APIs
+@app.post("/api/transaction/create")
+def create_transaction(req: TransactionRequest, authorization: str = Header(None), request: Request = None):
+    rate_limit_check(request)
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    user_id = verify_token(authorization.replace("Bearer ", ""))
+    conn = get_db()
+    
+    user = dict(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+    
+    # Check balance
+    if user['balance'] < req.amount:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
+    
+    # Fraud check
+    fraud_result = calculate_fraud_score(user_id, req.amount, req.device_id or "unknown", req.location)
+    
+    # Create transaction
+    conn.execute(
+        "INSERT INTO transactions (user_id, amount, receiver, upi_id, risk_score, status, location, device_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, req.amount, req.location.get('city', 'Unknown'), req.upi_id, fraud_result['risk_score'], 
+         fraud_result['action'], json.dumps(req.location), req.device_id or "unknown", datetime.now().isoformat())
+    )
+    
+    tx_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    
+    # Update balance if allowed
+    if fraud_result['action'] == 'allow':
+        conn.execute("UPDATE users SET balance=? WHERE id=?", (user['balance'] - req.amount, user_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return {
+        "success": True,
+        "transaction_id": tx_id,
+        "fraud_check": fraud_result,
+        "new_balance": user['balance'] - req.amount if fraud_result['action'] == 'allow' else user['balance']
+    }
+
+@app.get("/api/transactions")
+def get_transactions(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    user_id = verify_token(authorization.replace("Bearer ", ""))
+    conn = get_db()
+    
+    txs = conn.execute(
+        "SELECT * FROM transactions WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
+        (user_id,)
+    ).fetchall()
+    
+    conn.close()
+    return [{"id": tx['id'], "amount": tx['amount'], "receiver": tx['receiver'], "upi_id": tx['upi_id'],
+             "risk_score": tx['risk_score'], "status": tx['status'], "timestamp": tx['timestamp']} for tx in txs]
+
+# LOCATION API
+@app.post("/api/location/update")
+def update_location(req: LocationUpdate, authorization: str = Header(None), request: Request = None):
+    rate_limit_check(request)
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    user_id = verify_token(authorization.replace("Bearer ", ""))
+    conn = get_db()
+    
+    # Store location
+    conn.execute(
+        "INSERT INTO locations (user_id, latitude, longitude, city, timestamp) VALUES (?, ?, ?, ?, ?)",
+        (user_id, req.latitude, req.longitude, req.city, datetime.now().isoformat())
+    )
+    
+    # Update usual location if not set
+    user = conn.execute("SELECT usual_location FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user['usual_location']:
+        conn.execute("UPDATE users SET usual_location=? WHERE id=?", 
+                    (json.dumps({"city": req.city, "lat": req.latitude, "lng": req.longitude}), user_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return {"success": True, "message": "Location updated"}
+
+@app.get("/api/user/profile")
+def get_profile(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    user_id = verify_token(authorization.replace("Bearer ", ""))
+    conn = get_db()
+    
+    user = dict(conn.execute("SELECT id, mobile, name, balance, avg_spending FROM users WHERE id=?", (user_id,)).fetchone())
+    
+    # Calculate risk score
+    recent_txs = conn.execute(
+        "SELECT AVG(risk_score) as avg_risk FROM transactions WHERE user_id=? AND timestamp > ?",
+        (user_id, (datetime.now() - timedelta(days=7)).isoformat())
+    ).fetchone()
+    
+    conn.close()
+    
+    return {
+        **user,
+        "fraud_susceptibility_score": int(recent_txs['avg_risk']) if recent_txs['avg_risk'] else 35
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
