@@ -5,7 +5,7 @@ import { BarCodeScanner } from 'expo-barcode-scanner';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL;
 
