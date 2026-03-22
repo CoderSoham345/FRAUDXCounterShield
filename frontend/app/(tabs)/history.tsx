@@ -84,7 +84,25 @@ export default function HistoryScreen() {
   };
 
   const renderTransaction = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.transactionCard} onPress={() => router.push('/transaction-detail')}>
+    <TouchableOpacity 
+      style={styles.transactionCard} 
+      onPress={() => router.push({
+        pathname: '/transaction-detail',
+        params: {
+          id: item.id,
+          recipient: item.recipient,
+          amount: item.amount.toString(),
+          status: item.status,
+          riskLevel: item.riskLevel,
+          riskScore: item.riskScore.toString(),
+          timestamp: item.timestamp.toISOString(),
+          city: item.location.city,
+          upi_id: item.upi_id,
+          merchant_name: item.merchant_name,
+          fraud_reasons: JSON.stringify(item.fraud_reasons)
+        }
+      })}
+    >
       <View style={styles.cardHeader}>
         <View style={styles.transactionLeft}>
           <View style={[styles.txIcon, { backgroundColor: `${getRiskColor(item.riskLevel)}20` }]}>

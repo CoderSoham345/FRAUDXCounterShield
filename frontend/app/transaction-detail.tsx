@@ -10,27 +10,36 @@ export default function TransactionDetailScreen() {
   const params = useLocalSearchParams();
 
   const transaction = {
-    id: 'TXN1234567890',
-    recipient: '🛒 Grocery Store',
-    amount: 250,
-    timestamp: new Date(),
-    status: 'Completed',
-    riskLevel: 'SAFE',
-    riskScore: 10,
-    location: 'Mumbai, Maharashtra',
+    id: params.id as string || 'TXN1234567890',
+    recipient: params.recipient as string || '🛒 Grocery Store',
+    amount: parseFloat(params.amount as string) || 250,
+    timestamp: new Date(params.timestamp as string || Date.now()),
+    status: params.status as string || 'Completed',
+    riskLevel: params.riskLevel as string || 'SAFE',
+    riskScore: parseInt(params.riskScore as string) || 10,
+    location: params.city as string || 'Mumbai, Maharashtra',
     paymentMethod: 'UPI',
-    upiId: 'grocery@paytm',
+    upiId: params.upi_id as string || 'merchant@paytm',
     accountDetails: {
       bank: 'HDFC Bank',
       accountNumber: 'XXXX XXXX 4567',
       ifsc: 'HDFC0001234',
     },
     recipientDetails: {
-      name: 'Metro Grocery Store',
+      name: params.merchant_name as string || 'Metro Grocery Store',
       mobile: '+91 98765XXXXX',
-      address: 'Andheri West, Mumbai',
+      address: params.city as string || 'Mumbai',
     },
-    aiInsight: 'This is a regular merchant transaction with typical amount pattern. No suspicious activity detected.',
+    fraudReasons: params.fraud_reasons ? JSON.parse(params.fraud_reasons as string) : [],
+    aiInsight: params.riskScore && parseInt(params.riskScore as string) > 50 
+      ? 'High-risk transaction detected. Amount significantly higher than usual spending pattern. Location mismatch and unusual time detected.'
+      : 'This is a regular merchant transaction with typical amount pattern. No suspicious activity detected.',
+  };
+
+  const getRiskColor = () => {
+    if (transaction.riskScore >= 70) return '#ef4444';
+    if (transaction.riskScore >= 40) return '#f59e0b';
+    return '#10b981';
   };
 
   return (
@@ -45,8 +54,14 @@ export default function TransactionDetailScreen() {
 
       <ScrollView style={styles.scrollView}>
         <View style={styles.statusCard}>
-          <Ionicons name="checkmark-circle" size={64} color="#10b981" />
-          <Text style={styles.statusTitle}>Payment Successful</Text>
+          <Ionicons 
+            name={transaction.status === 'blocked' ? 'close-circle' : 'checkmark-circle'} 
+            size={64} 
+            color={transaction.status === 'blocked' ? '#ef4444' : '#10b981'} 
+          />
+          <Text style={[styles.statusTitle, { color: transaction.status === 'blocked' ? '#ef4444' : '#10b981' }]}>
+            {transaction.status === 'blocked' ? 'Payment Blocked' : 'Payment Successful'}
+          </Text>
           <Text style={styles.amount}>-₹{transaction.amount.toLocaleString('en-IN')}</Text>
           <Text style={styles.timestamp}>{format(transaction.timestamp, 'dd MMM yyyy, hh:mm a')}</Text>
         </View>
@@ -115,16 +130,28 @@ export default function TransactionDetailScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🛡️ Security Analysis</Text>
-          <View style={styles.riskCard}>
+          <View style={[styles.riskCard, { backgroundColor: `${getRiskColor()}10`, borderColor: `${getRiskColor()}30` }]}>
             <View style={styles.riskHeader}>
-              <View style={styles.riskBadge}>
-                <Text style={styles.riskText}>✅ {transaction.riskLevel}</Text>
+              <View style={[styles.riskBadge, { backgroundColor: getRiskColor() }]}>
+                <Text style={styles.riskText}>
+                  {transaction.riskLevel === 'HIGH' ? '🚨 HIGH' : transaction.riskLevel === 'MEDIUM' ? '⚠️ MEDIUM' : '✅ SAFE'}
+                </Text>
               </View>
-              <Text style={styles.riskScore}>Risk Score: {transaction.riskScore}/100</Text>
+              <Text style={[styles.riskScore, { color: getRiskColor() }]}>Risk Score: {transaction.riskScore}/100</Text>
             </View>
             <View style={styles.riskMeter}>
-              <View style={[styles.riskMeterFill, { width: `${transaction.riskScore}%`, backgroundColor: '#10b981' }]} />
+              <View style={[styles.riskMeterFill, { width: `${transaction.riskScore}%`, backgroundColor: getRiskColor() }]} />
             </View>
+            {transaction.fraudReasons && transaction.fraudReasons.length > 0 && (
+              <View style={styles.fraudReasonsList}>
+                {transaction.fraudReasons.map((reason: string, idx: number) => (
+                  <View key={idx} style={styles.fraudReasonItem}>
+                    <Ionicons name="alert-circle" size={16} color="#f59e0b" />
+                    <Text style={styles.fraudReasonText}>{reason}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
             <View style={styles.aiInsightBox}>
               <Ionicons name="sparkles" size={20} color="#3b82f6" />
               <Text style={styles.aiInsightText}>{transaction.aiInsight}</Text>
@@ -163,13 +190,16 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#374151' },
   detailLabel: { fontSize: 14, color: '#9ca3af' },
   detailValue: { fontSize: 14, fontWeight: '600', color: '#fff', textAlign: 'right', flex: 1, marginLeft: 16 },
-  riskCard: { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' },
+  riskCard: { borderRadius: 12, padding: 16, borderWidth: 1 },
   riskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  riskBadge: { backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  riskBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   riskText: { fontSize: 14, fontWeight: 'bold', color: '#fff' },
-  riskScore: { fontSize: 14, color: '#10b981', fontWeight: '600' },
+  riskScore: { fontSize: 14, fontWeight: '600' },
   riskMeter: { height: 8, backgroundColor: '#374151', borderRadius: 4, overflow: 'hidden', marginBottom: 16 },
   riskMeterFill: { height: '100%' },
+  fraudReasonsList: { marginBottom: 16, gap: 8 },
+  fraudReasonItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  fraudReasonText: { flex: 1, fontSize: 13, color: '#d1d5db' },
   aiInsightBox: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   aiInsightText: { flex: 1, fontSize: 13, color: '#d1d5db', lineHeight: 18 },
   actionButtons: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginBottom: 32 },
