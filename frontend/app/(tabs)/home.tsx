@@ -80,7 +80,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.actionText}>Send Money</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/scan-pay')}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/qr-scanner')}>
             <View style={[styles.actionIcon, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
               <Text style={styles.actionEmoji}>📱</Text>
             </View>
