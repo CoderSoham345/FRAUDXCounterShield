@@ -13,7 +13,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Track transaction location for fraud detection",
         "NSLocationAlwaysUsageDescription": "Monitor location for security alerts"
-      }
+      },
+      "bundleIdentifier": "com.soham936.frontend"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,8 +24,11 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.soham936.frontend"
     },
     "web": {
       "bundler": "metro",
@@ -51,6 +55,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6eb77793-ff4f-4fb8-92e0-e0be89150ca1"
+      }
     }
   }
 }
