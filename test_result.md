@@ -96,212 +96,203 @@
 # END - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
 
-
-
-#====================================================================================================
-# Testing Data - Main Agent and testing sub agent both should log testing data below this section
-#====================================================================================================
-
-user_problem_statement: |
-  Create a mobile fintech application called "FraudX" - an AI-powered UPI fraud detection system.
-  Features: User login with OTP, Dashboard with balance, Send money, AI fraud detection, Alert popup,
-  Account freeze with countdown, Transaction history with risk labels, Location-based alerts.
+user_problem_statement: "FraudX - AI-powered UPI fraud detection app. Full-stack Expo + FastAPI + SQLite. Unified backend with JWT auth, demo data seeding, AI chatbot, and fraud detection engine."
 
 backend:
-  - task: "OTP Authentication System"
+  - task: "Health Check Endpoint"
     implemented: true
-    working: "NA"
-    file: "/app/backend/server.py"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented send-otp and verify-otp endpoints with mock OTP (123456)"
+        comment: "GET /api/health endpoint returns service status"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/health returns status 'ok', service 'FraudX API', version '2.0'. Endpoint working correctly."
 
-  - task: "User Profile Management"
+  - task: "User Signup"
     implemented: true
-    working: "NA"
-    file: "/app/backend/server.py"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented user profile endpoint with balance and freeze status"
+        comment: "POST /api/auth/signup - creates user with bcrypt password hash"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/auth/signup successfully creates new users with unique mobile numbers, returns JWT token and user details. Duplicate mobile validation working correctly."
 
-  - task: "AI Fraud Detection System"
+  - task: "User Login"
     implemented: true
-    working: "NA"
-    file: "/app/backend/server.py"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented transaction analysis with OpenAI GPT-5.2 using Emergent LLM key and rule-based risk scoring"
+        comment: "POST /api/auth/login - returns JWT token. Demo: mobile=9999999999, password=test123"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/auth/login works with demo user (9999999999/test123). Returns JWT token, user details, and balance. Invalid credentials properly rejected with 401."
 
-  - task: "Transaction Management"
+  - task: "Get User Profile"
     implemented: true
-    working: "NA"
-    file: "/app/backend/server.py"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented initiate, confirm, and history endpoints for transactions"
+        comment: "GET /api/user/profile - requires Bearer token"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/user/profile returns complete user profile including id, name, mobile, balance, is_frozen status. JWT authentication working correctly."
 
-  - task: "Account Freeze System"
+  - task: "Create Transaction with Fraud Detection"
     implemented: true
-    working: "NA"
-    file: "/app/backend/server.py"
+    working: true
+    file: "server.py"
     stuck_count: 0
-    priority: "medium"
-    needs_retesting: true
+    priority: "high"
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented account freeze for 30 seconds after blocking suspicious transaction"
+        comment: "POST /api/transaction/create - creates transaction with fraud scoring. Returns is_suspicious flag and fraud_check details"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/transaction/create fraud detection engine working perfectly. Low-risk transactions (₹500 to grocery@paytm in Mumbai) auto-complete with risk_score=0. High-risk transactions (₹25000 to unknown@upi in Delhi) flagged as suspicious with risk_score=85 and pending status. Insufficient balance validation working."
 
-frontend:
-  - task: "Splash Screen"
+  - task: "Transaction Action (Allow/Block)"
     implemented: true
-    working: "NA"
-    file: "/app/frontend/app/index.tsx"
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/transaction/{tx_id}/action - allows or blocks pending transaction. Block freezes account for 30s"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/transaction/{tx_id}/action successfully blocks suspicious transactions and freezes account for 30 seconds. Returns updated balance and freeze timestamp."
+
+  - task: "Get Transactions History"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /api/transactions - returns last 50 transactions with risk details"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/transactions returns complete transaction history (10 demo transactions) with all required fields: id, amount, receiver, risk_score, risk_level, status, fraud_reasons, ai_analysis."
+
+  - task: "Account Unfreeze"
+    implemented: true
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "medium"
     needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Created animated splash screen with logo and tagline"
+        comment: "POST /api/account/unfreeze - unfreezes account"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/account/unfreeze successfully unfreezes account and returns success message."
 
-  - task: "Login Screen with OTP"
+  - task: "QR Validation"
     implemented: true
-    working: "NA"
-    file: "/app/frontend/app/login.tsx"
-    stuck_count: 0
-    priority: "high"
-    needs_retesting: true
-    status_history:
-      - working: "NA"
-        agent: "main"
-        comment: "Implemented mobile number and OTP verification flow"
-
-  - task: "Home Dashboard"
-    implemented: true
-    working: "NA"
-    file: "/app/frontend/app/(tabs)/home.tsx"
-    stuck_count: 0
-    priority: "high"
-    needs_retesting: true
-    status_history:
-      - working: "NA"
-        agent: "main"
-        comment: "Created dashboard with balance card, quick actions, and recent transactions"
-
-  - task: "Transaction History Screen"
-    implemented: true
-    working: "NA"
-    file: "/app/frontend/app/(tabs)/history.tsx"
-    stuck_count: 0
-    priority: "high"
-    needs_retesting: true
-    status_history:
-      - working: "NA"
-        agent: "main"
-        comment: "Implemented transaction list with risk scores, meters, and fraud reasons"
-
-  - task: "Profile Screen"
-    implemented: true
-    working: "NA"
-    file: "/app/frontend/app/(tabs)/profile.tsx"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Created profile screen with user info and settings menu"
+        comment: "POST /api/scan/validate - validates UPI QR codes (upi://pay format)"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/scan/validate correctly parses UPI QR codes (upi://pay format) and extracts UPI ID, merchant name, and amount. Returns valid=true for proper QR codes."
 
-  - task: "Send Money Screen"
+  - task: "AI Chatbot"
     implemented: true
-    working: "NA"
-    file: "/app/frontend/app/send-money.tsx"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented payment screen with location tracking and AI fraud analysis"
+        comment: "POST /api/chatbot - AI security assistant using emergentintegrations with OpenAI GPT-4.1-mini. Has fallback responses if API fails."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/chatbot AI assistant working correctly. Responds to fraud prevention questions with detailed security advice. Uses emergentintegrations with OpenAI GPT-4.1-mini successfully."
 
-  - task: "Fraud Alert Modal"
+  - task: "Demo Data Seeding"
     implemented: true
-    working: "NA"
-    file: "/app/frontend/app/fraud-alert.tsx"
+    working: true
+    file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Created alert modal with risk meter, reasons, AI analysis, and allow/block actions"
+        comment: "Seeds demo user (9999999999/test123) with 10 transactions on startup"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Demo data seeding working correctly. Demo user Rajesh Kumar (9999999999/test123) created with balance ₹45250 and 10 sample transactions with varying risk levels."
 
-  - task: "Account Frozen Screen"
+  - task: "Location Update"
     implemented: true
-    working: "NA"
-    file: "/app/frontend/app/account-frozen.tsx"
+    working: true
+    file: "server.py"
     stuck_count: 0
-    priority: "high"
-    needs_retesting: true
+    priority: "low"
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented freeze screen with countdown timer and unfreeze button"
+        comment: "POST /api/location/update - updates user location"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/location/update successfully updates user location with latitude, longitude, and city. Returns success message."
 
 metadata:
   created_by: "main_agent"
-  version: "1.0"
-  test_sequence: 0
+  version: "2.0"
+  test_sequence: 1
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "OTP Authentication System"
-    - "AI Fraud Detection System"
-    - "Transaction Management"
-    - "Login Screen with OTP"
-    - "Send Money Screen"
-    - "Fraud Alert Modal"
+  current_focus: []
   stuck_tasks: []
-  test_all: true
+  test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
-    message: |
-      FraudX MVP implementation complete. All core features implemented:
-      
-      Backend:
-      - Mock OTP authentication (OTP: 123456)
-      - AI fraud detection with OpenAI GPT-5.2
-      - Rule-based risk scoring (amount, location, time)
-      - Transaction management with confirm/block
-      - 30-second account freeze mechanism
-      
-      Frontend:
-      - Complete navigation with tabs (Home, History, Profile)
-      - Login with OTP verification
-      - Dashboard with balance and quick actions
-      - Send money with real-time GPS location
-      - AI fraud alert modal with risk visualization
-      - Account freeze screen with countdown
-      - Transaction history with risk labels
-      
-      Ready for backend testing. Location permissions configured in app.json.
+    message: "Complete backend rewrite with unified server.py. All endpoints use JWT auth with SQLite. Demo user seeded on startup. Test all endpoints. Auth: login with mobile=9999999999, password=test123 to get JWT token. Use token as 'Bearer {token}' in Authorization header."
+  - agent: "testing"
+    message: "✅ COMPREHENSIVE BACKEND TESTING COMPLETED: All 12 backend API endpoints tested successfully (15/15 tests passed). Key findings: 1) Health check, auth (signup/login), user profile, and transaction history APIs working perfectly. 2) Fraud detection engine working excellently - low-risk transactions auto-complete, high-risk transactions flagged with detailed risk analysis. 3) Transaction blocking and account freeze/unfreeze working correctly. 4) QR validation, AI chatbot (using emergentintegrations), and location update all functional. 5) Error handling robust - invalid credentials, missing tokens, insufficient balance, and duplicate signups properly handled. 6) Demo data seeding working with user Rajesh Kumar (9999999999/test123) and 10 sample transactions. Backend is production-ready with no critical issues found."

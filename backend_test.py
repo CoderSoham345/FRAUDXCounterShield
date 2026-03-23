@@ -1,568 +1,497 @@
 #!/usr/bin/env python3
 """
 FraudX Backend API Testing Suite
-Tests all authentication, user profile, transaction, and account management endpoints.
+Tests all backend endpoints for the FraudX fraud detection app
 """
 
 import requests
 import json
 import time
+import sys
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://transact-guard-6.preview.emergentagent.com/api"
-TEST_MOBILE = "9876543210"
-TEST_OTP = "123456"
+BASE_URL = "https://fraudx-ai-detect.preview.emergentagent.com"
+API_BASE = f"{BASE_URL}/api"
 
-class FraudXAPITester:
+class FraudXTester:
     def __init__(self):
-        self.base_url = BASE_URL
         self.token = None
-        self.transaction_id = None
+        self.user_id = None
         self.test_results = []
-        
-    def log_test(self, test_name, success, details=""):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'Content-Type': 'application/json',
+            'User-Agent': 'FraudX-Test-Client/1.0'
+        })
+    
+    def log_test(self, test_name, success, details="", response_data=None):
         """Log test results"""
         status = "✅ PASS" if success else "❌ FAIL"
-        self.test_results.append({
-            "test": test_name,
-            "success": success,
-            "details": details
-        })
-        print(f"{status}: {test_name}")
+        print(f"{status} {test_name}")
         if details:
             print(f"   Details: {details}")
-    
-    def test_send_otp(self):
-        """Test 1: Send OTP to mobile number"""
-        print("\n=== Testing OTP Send ===")
-        try:
-            response = requests.post(
-                f"{self.base_url}/auth/send-otp",
-                json={"mobile": TEST_MOBILE},
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("success") and "123456" in data.get("message", ""):
-                    self.log_test("Send OTP", True, f"OTP sent to {TEST_MOBILE}")
-                    return True
-                else:
-                    self.log_test("Send OTP", False, f"Unexpected response: {data}")
-                    return False
-            else:
-                self.log_test("Send OTP", False, f"HTTP {response.status_code}: {response.text}")
-                return False
-        except Exception as e:
-            self.log_test("Send OTP", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_verify_otp(self):
-        """Test 2: Verify OTP and get authentication token"""
-        print("\n=== Testing OTP Verification ===")
-        try:
-            response = requests.post(
-                f"{self.base_url}/auth/verify-otp",
-                json={"mobile": TEST_MOBILE, "otp": TEST_OTP},
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("success") and data.get("token"):
-                    self.token = data["token"]
-                    user_info = data.get("user", {})
-                    self.log_test("Verify OTP", True, 
-                                f"Token received, User: {user_info.get('name')}, Balance: ₹{user_info.get('balance')}")
-                    return True
-                else:
-                    self.log_test("Verify OTP", False, f"Missing token in response: {data}")
-                    return False
-            else:
-                self.log_test("Verify OTP", False, f"HTTP {response.status_code}: {response.text}")
-                return False
-        except Exception as e:
-            self.log_test("Verify OTP", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_invalid_otp(self):
-        """Test: Invalid OTP verification"""
-        print("\n=== Testing Invalid OTP ===")
-        try:
-            response = requests.post(
-                f"{self.base_url}/auth/verify-otp",
-                json={"mobile": TEST_MOBILE, "otp": "wrong123"},
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if not data.get("success"):
-                    self.log_test("Invalid OTP Handling", True, "Correctly rejected invalid OTP")
-                    return True
-                else:
-                    self.log_test("Invalid OTP Handling", False, "Invalid OTP was accepted")
-                    return False
-            else:
-                self.log_test("Invalid OTP Handling", False, f"HTTP {response.status_code}: {response.text}")
-                return False
-        except Exception as e:
-            self.log_test("Invalid OTP Handling", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_user_profile(self):
-        """Test 3: Get user profile with balance"""
-        print("\n=== Testing User Profile ===")
-        if not self.token:
-            self.log_test("User Profile", False, "No token available")
-            return False
+        if response_data and not success:
+            print(f"   Response: {response_data}")
         
+        self.test_results.append({
+            'test': test_name,
+            'success': success,
+            'details': details,
+            'timestamp': datetime.now().isoformat()
+        })
+        print()
+    
+    def test_health_check(self):
+        """Test 1: GET /api/health"""
         try:
-            response = requests.get(
-                f"{self.base_url}/user/profile",
-                params={"token": self.token}
-            )
+            response = self.session.get(f"{API_BASE}/health")
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("mobile") == TEST_MOBILE and data.get("balance") is not None:
-                    self.log_test("User Profile", True, 
-                                f"Profile retrieved - Balance: ₹{data.get('balance')}, Frozen: {data.get('is_frozen')}")
+                if data.get('status') == 'ok':
+                    self.log_test("Health Check", True, f"Service: {data.get('service', 'Unknown')}, Version: {data.get('version', 'Unknown')}")
                     return True
                 else:
-                    self.log_test("User Profile", False, f"Missing profile data: {data}")
-                    return False
+                    self.log_test("Health Check", False, f"Unexpected status: {data.get('status')}", data)
             else:
-                self.log_test("User Profile", False, f"HTTP {response.status_code}: {response.text}")
-                return False
+                self.log_test("Health Check", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("User Profile", False, f"Exception: {str(e)}")
-            return False
+            self.log_test("Health Check", False, f"Exception: {str(e)}")
+        return False
     
-    def test_invalid_token(self):
-        """Test: Invalid token handling"""
-        print("\n=== Testing Invalid Token ===")
+    def test_signup(self):
+        """Test 2: POST /api/auth/signup"""
         try:
-            response = requests.get(
-                f"{self.base_url}/user/profile",
-                params={"token": "invalid-token-123"}
-            )
-            
-            if response.status_code == 401:
-                self.log_test("Invalid Token Handling", True, "Correctly rejected invalid token")
-                return True
-            else:
-                self.log_test("Invalid Token Handling", False, f"Unexpected response: HTTP {response.status_code}")
-                return False
-        except Exception as e:
-            self.log_test("Invalid Token Handling", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_low_amount_transaction(self):
-        """Test 4a: Low amount transaction (should be low risk)"""
-        print("\n=== Testing Low Amount Transaction ===")
-        if not self.token:
-            self.log_test("Low Amount Transaction", False, "No token available")
-            return False
-        
-        try:
-            transaction_data = {
-                "recipient": "test@upi",
-                "amount": 500,
-                "location": {
-                    "city": "Mumbai",
-                    "lat": 19.0760,
-                    "lng": 72.8777
-                }
+            # Use unique mobile number for testing
+            test_mobile = f"8888888{int(time.time()) % 1000:03d}"
+            signup_data = {
+                "mobile": test_mobile,
+                "password": "testpass123",
+                "name": "Test User"
             }
             
-            response = requests.post(
-                f"{self.base_url}/transaction/initiate",
-                json=transaction_data,
-                params={"token": self.token}
-            )
+            response = self.session.post(f"{API_BASE}/auth/signup", json=signup_data)
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("transaction_id"):
-                    risk_level = data.get("risk_level", "UNKNOWN")
-                    risk_score = data.get("risk_score", 0)
-                    ai_analysis = data.get("ai_analysis", "")
-                    
-                    self.log_test("Low Amount Transaction", True,
-                                f"Transaction ID: {data['transaction_id']}, Risk: {risk_level} ({risk_score}%), AI: {ai_analysis[:50]}...")
+                if data.get('success') and data.get('token'):
+                    self.log_test("User Signup", True, f"Created user: {data['user']['name']} ({data['user']['mobile']})")
                     return True
                 else:
-                    self.log_test("Low Amount Transaction", False, f"Missing transaction ID: {data}")
-                    return False
+                    self.log_test("User Signup", False, "Missing success flag or token", data)
             else:
-                self.log_test("Low Amount Transaction", False, f"HTTP {response.status_code}: {response.text}")
-                return False
+                self.log_test("User Signup", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("Low Amount Transaction", False, f"Exception: {str(e)}")
-            return False
+            self.log_test("User Signup", False, f"Exception: {str(e)}")
+        return False
     
-    def test_high_amount_transaction(self):
-        """Test 4b: High amount suspicious transaction"""
-        print("\n=== Testing High Amount Suspicious Transaction ===")
-        if not self.token:
-            self.log_test("High Amount Transaction", False, "No token available")
-            return False
-        
+    def test_login(self):
+        """Test 3: POST /api/auth/login - Login with demo user"""
         try:
-            transaction_data = {
-                "recipient": "test2@upi",
-                "amount": 15000,
-                "location": {
-                    "city": "Delhi",
-                    "lat": 28.6139,
-                    "lng": 77.2090
-                }
+            login_data = {
+                "mobile": "9999999999",
+                "password": "test123",
+                "device_id": "test-device-001"
             }
             
-            response = requests.post(
-                f"{self.base_url}/transaction/initiate",
-                json=transaction_data,
-                params={"token": self.token}
-            )
+            response = self.session.post(f"{API_BASE}/auth/login", json=login_data)
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("transaction_id"):
-                    self.transaction_id = data["transaction_id"]  # Store for confirm test
-                    risk_level = data.get("risk_level", "UNKNOWN")
-                    risk_score = data.get("risk_score", 0)
-                    is_suspicious = data.get("is_suspicious", False)
-                    fraud_reasons = data.get("fraud_reasons", [])
-                    
-                    self.log_test("High Amount Transaction", True,
-                                f"Suspicious: {is_suspicious}, Risk: {risk_level} ({risk_score}%), Reasons: {fraud_reasons}")
+                if data.get('success') and data.get('token'):
+                    self.token = data['token']
+                    self.user_id = data['user']['id']
+                    self.session.headers['Authorization'] = f"Bearer {self.token}"
+                    self.log_test("User Login", True, f"Logged in as: {data['user']['name']} (Balance: ₹{data['user']['balance']})")
                     return True
                 else:
-                    self.log_test("High Amount Transaction", False, f"Missing transaction ID: {data}")
-                    return False
+                    self.log_test("User Login", False, "Missing success flag or token", data)
             else:
-                self.log_test("High Amount Transaction", False, f"HTTP {response.status_code}: {response.text}")
-                return False
+                self.log_test("User Login", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("High Amount Transaction", False, f"Exception: {str(e)}")
-            return False
+            self.log_test("User Login", False, f"Exception: {str(e)}")
+        return False
     
-    def test_insufficient_balance(self):
-        """Test: Insufficient balance error"""
-        print("\n=== Testing Insufficient Balance ===")
+    def test_get_profile(self):
+        """Test 4: GET /api/user/profile"""
         if not self.token:
-            self.log_test("Insufficient Balance", False, "No token available")
+            self.log_test("Get User Profile", False, "No authentication token available")
             return False
         
         try:
-            transaction_data = {
-                "recipient": "test@upi",
-                "amount": 100000,  # More than default balance
-                "location": {
-                    "city": "Mumbai",
-                    "lat": 19.0760,
-                    "lng": 72.8777
-                }
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/transaction/initiate",
-                json=transaction_data,
-                params={"token": self.token}
-            )
-            
-            if response.status_code == 400:
-                self.log_test("Insufficient Balance", True, "Correctly rejected transaction with insufficient balance")
-                return True
-            else:
-                self.log_test("Insufficient Balance", False, f"Unexpected response: HTTP {response.status_code}")
-                return False
-        except Exception as e:
-            self.log_test("Insufficient Balance", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_allow_transaction(self):
-        """Test 5a: Confirm transaction with 'allow' action"""
-        print("\n=== Testing Transaction Allow ===")
-        if not self.token or not self.transaction_id:
-            self.log_test("Transaction Allow", False, "No token or transaction ID available")
-            return False
-        
-        try:
-            response = requests.post(
-                f"{self.base_url}/transaction/confirm",
-                json={"transaction_id": self.transaction_id, "action": "allow"},
-                params={"token": self.token}
-            )
+            response = self.session.get(f"{API_BASE}/user/profile")
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("success"):
-                    new_balance = data.get("new_balance")
-                    self.log_test("Transaction Allow", True, f"Transaction completed, New balance: ₹{new_balance}")
+                required_fields = ['id', 'name', 'mobile', 'balance', 'is_frozen']
+                if all(field in data for field in required_fields):
+                    self.log_test("Get User Profile", True, 
+                                f"User: {data['name']}, Balance: ₹{data['balance']}, Frozen: {data['is_frozen']}")
                     return True
                 else:
-                    self.log_test("Transaction Allow", False, f"Transaction not completed: {data}")
-                    return False
+                    missing = [f for f in required_fields if f not in data]
+                    self.log_test("Get User Profile", False, f"Missing fields: {missing}", data)
             else:
-                self.log_test("Transaction Allow", False, f"HTTP {response.status_code}: {response.text}")
-                return False
+                self.log_test("Get User Profile", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("Transaction Allow", False, f"Exception: {str(e)}")
-            return False
+            self.log_test("Get User Profile", False, f"Exception: {str(e)}")
+        return False
     
-    def test_block_transaction(self):
-        """Test 5b: Block suspicious transaction and freeze account"""
-        print("\n=== Testing Transaction Block ===")
+    def test_get_transactions(self):
+        """Test 5: GET /api/transactions"""
         if not self.token:
-            self.log_test("Transaction Block", False, "No token available")
-            return False
-        
-        # First create another transaction to block
-        try:
-            transaction_data = {
-                "recipient": "suspicious@upi",
-                "amount": 20000,
-                "location": {"city": "Kolkata", "lat": 22.5726, "lng": 88.3639}
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/transaction/initiate",
-                json=transaction_data,
-                params={"token": self.token}
-            )
-            
-            if response.status_code != 200:
-                self.log_test("Transaction Block", False, "Could not create transaction to block")
-                return False
-            
-            transaction_id = response.json().get("transaction_id")
-            
-            # Now block it
-            response = requests.post(
-                f"{self.base_url}/transaction/confirm",
-                json={"transaction_id": transaction_id, "action": "block"},
-                params={"token": self.token}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("success") and data.get("freeze_until"):
-                    self.log_test("Transaction Block", True, f"Transaction blocked, Account frozen until: {data['freeze_until']}")
-                    return True
-                else:
-                    self.log_test("Transaction Block", False, f"Transaction not blocked properly: {data}")
-                    return False
-            else:
-                self.log_test("Transaction Block", False, f"HTTP {response.status_code}: {response.text}")
-                return False
-        except Exception as e:
-            self.log_test("Transaction Block", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_frozen_account_transaction(self):
-        """Test: Transaction attempt while account is frozen"""
-        print("\n=== Testing Frozen Account Transaction ===")
-        if not self.token:
-            self.log_test("Frozen Account Transaction", False, "No token available")
+            self.log_test("Get Transactions", False, "No authentication token available")
             return False
         
         try:
-            transaction_data = {
-                "recipient": "test@upi",
-                "amount": 100,
-                "location": {"city": "Mumbai", "lat": 19.0760, "lng": 72.8777}
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/transaction/initiate",
-                json=transaction_data,
-                params={"token": self.token}
-            )
-            
-            if response.status_code == 403:
-                self.log_test("Frozen Account Transaction", True, "Correctly rejected transaction from frozen account")
-                return True
-            else:
-                # Account might not be frozen anymore, that's also valid
-                self.log_test("Frozen Account Transaction", True, "Account not frozen or freeze expired - acceptable")
-                return True
-        except Exception as e:
-            self.log_test("Frozen Account Transaction", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_transaction_history(self):
-        """Test 6: Get transaction history"""
-        print("\n=== Testing Transaction History ===")
-        if not self.token:
-            self.log_test("Transaction History", False, "No token available")
-            return False
-        
-        try:
-            response = requests.get(
-                f"{self.base_url}/transaction/history",
-                params={"token": self.token}
-            )
+            response = self.session.get(f"{API_BASE}/transactions")
             
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, list):
-                    transaction_count = len(data)
-                    
-                    # Check if transactions have required fields
-                    if transaction_count > 0:
-                        first_transaction = data[0]
-                        required_fields = ["id", "recipient", "amount", "risk_score", "risk_level", "status"]
-                        missing_fields = [field for field in required_fields if field not in first_transaction]
-                        
-                        if not missing_fields:
-                            self.log_test("Transaction History", True, 
-                                        f"Retrieved {transaction_count} transactions with all required fields")
+                    if len(data) > 0:
+                        # Check first transaction structure
+                        tx = data[0]
+                        required_fields = ['id', 'amount', 'receiver', 'risk_score', 'risk_level', 'status', 'fraud_reasons']
+                        if all(field in tx for field in required_fields):
+                            self.log_test("Get Transactions", True, 
+                                        f"Retrieved {len(data)} transactions. Sample: ₹{tx['amount']} to {tx['receiver']} (Risk: {tx['risk_level']})")
                             return True
                         else:
-                            self.log_test("Transaction History", False, f"Missing fields: {missing_fields}")
-                            return False
+                            missing = [f for f in required_fields if f not in tx]
+                            self.log_test("Get Transactions", False, f"Missing fields in transaction: {missing}", tx)
                     else:
-                        self.log_test("Transaction History", True, "No transactions found (acceptable for new user)")
+                        self.log_test("Get Transactions", True, "No transactions found (empty list)")
                         return True
                 else:
-                    self.log_test("Transaction History", False, f"Expected list, got: {type(data)}")
-                    return False
+                    self.log_test("Get Transactions", False, "Response is not a list", data)
             else:
-                self.log_test("Transaction History", False, f"HTTP {response.status_code}: {response.text}")
-                return False
+                self.log_test("Get Transactions", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("Transaction History", False, f"Exception: {str(e)}")
-            return False
+            self.log_test("Get Transactions", False, f"Exception: {str(e)}")
+        return False
     
-    def test_unfreeze_account(self):
-        """Test 7: Unfreeze account"""
-        print("\n=== Testing Account Unfreeze ===")
+    def test_create_low_risk_transaction(self):
+        """Test 6: POST /api/transaction/create - Low risk transaction"""
         if not self.token:
-            self.log_test("Account Unfreeze", False, "No token available")
+            self.log_test("Create Low-Risk Transaction", False, "No authentication token available")
             return False
         
         try:
-            response = requests.post(
-                f"{self.base_url}/account/unfreeze",
-                params={"token": self.token}
-            )
+            tx_data = {
+                "amount": 500,
+                "upi_id": "grocery@paytm",
+                "receiver_name": "Grocery Store",
+                "location": {
+                    "city": "Mumbai",
+                    "lat": 19.076,
+                    "lng": 72.877
+                },
+                "device_id": "test-device-001"
+            }
+            
+            response = self.session.post(f"{API_BASE}/transaction/create", json=tx_data)
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("success"):
-                    self.log_test("Account Unfreeze", True, "Account successfully unfrozen")
-                    return True
+                if data.get('success'):
+                    is_suspicious = data.get('is_suspicious', True)
+                    fraud_check = data.get('fraud_check', {})
+                    self.log_test("Create Low-Risk Transaction", True, 
+                                f"Transaction ID: {data.get('transaction_id')}, Status: {data.get('status')}, "
+                                f"Suspicious: {is_suspicious}, Risk Score: {fraud_check.get('risk_score', 'N/A')}")
+                    return data.get('transaction_id')
                 else:
-                    self.log_test("Account Unfreeze", False, f"Unfreeze failed: {data}")
-                    return False
+                    self.log_test("Create Low-Risk Transaction", False, "Transaction creation failed", data)
             else:
-                self.log_test("Account Unfreeze", False, f"HTTP {response.status_code}: {response.text}")
-                return False
+                self.log_test("Create Low-Risk Transaction", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("Account Unfreeze", False, f"Exception: {str(e)}")
-            return False
+            self.log_test("Create Low-Risk Transaction", False, f"Exception: {str(e)}")
+        return None
     
-    def test_missing_fields(self):
-        """Test: Missing required fields"""
-        print("\n=== Testing Missing Required Fields ===")
+    def test_create_high_risk_transaction(self):
+        """Test 7: POST /api/transaction/create - High risk transaction"""
         if not self.token:
-            self.log_test("Missing Required Fields", False, "No token available")
+            self.log_test("Create High-Risk Transaction", False, "No authentication token available")
             return False
         
         try:
-            # Test transaction initiate without amount
-            response = requests.post(
-                f"{self.base_url}/transaction/initiate",
-                json={"recipient": "test@upi"},
-                params={"token": self.token}
-            )
+            tx_data = {
+                "amount": 25000,
+                "upi_id": "unknown@upi",
+                "receiver_name": "Unknown Merchant",
+                "location": {
+                    "city": "Delhi",
+                    "lat": 28.704,
+                    "lng": 77.102
+                },
+                "device_id": "new-device-999"
+            }
             
-            if response.status_code == 422:  # Validation error
-                self.log_test("Missing Required Fields", True, "Correctly rejected request with missing fields")
-                return True
+            response = self.session.post(f"{API_BASE}/transaction/create", json=tx_data)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    is_suspicious = data.get('is_suspicious', False)
+                    fraud_check = data.get('fraud_check', {})
+                    tx_id = data.get('transaction_id')
+                    self.log_test("Create High-Risk Transaction", True, 
+                                f"Transaction ID: {tx_id}, Status: {data.get('status')}, "
+                                f"Suspicious: {is_suspicious}, Risk Score: {fraud_check.get('risk_score', 'N/A')}")
+                    return tx_id
+                else:
+                    self.log_test("Create High-Risk Transaction", False, "Transaction creation failed", data)
             else:
-                self.log_test("Missing Required Fields", False, f"Unexpected response: HTTP {response.status_code}")
-                return False
+                self.log_test("Create High-Risk Transaction", False, f"HTTP {response.status_code}", response.text)
         except Exception as e:
-            self.log_test("Missing Required Fields", False, f"Exception: {str(e)}")
+            self.log_test("Create High-Risk Transaction", False, f"Exception: {str(e)}")
+        return None
+    
+    def test_transaction_action(self, tx_id, action="block"):
+        """Test 8: POST /api/transaction/{tx_id}/action"""
+        if not self.token or not tx_id:
+            self.log_test(f"Transaction Action ({action})", False, "No authentication token or transaction ID available")
             return False
+        
+        try:
+            action_data = {"action": action}
+            response = self.session.post(f"{API_BASE}/transaction/{tx_id}/action", json=action_data)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    message = data.get('message', 'Action completed')
+                    freeze_info = f", Frozen until: {data.get('freeze_until', 'N/A')}" if action == "block" else ""
+                    self.log_test(f"Transaction Action ({action})", True, 
+                                f"Status: {data.get('status')}, Balance: ₹{data.get('new_balance')}{freeze_info}")
+                    return True
+                else:
+                    self.log_test(f"Transaction Action ({action})", False, "Action failed", data)
+            else:
+                self.log_test(f"Transaction Action ({action})", False, f"HTTP {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test(f"Transaction Action ({action})", False, f"Exception: {str(e)}")
+        return False
+    
+    def test_unfreeze_account(self):
+        """Test 9: POST /api/account/unfreeze"""
+        if not self.token:
+            self.log_test("Account Unfreeze", False, "No authentication token available")
+            return False
+        
+        try:
+            response = self.session.post(f"{API_BASE}/account/unfreeze")
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    self.log_test("Account Unfreeze", True, data.get('message', 'Account unfrozen'))
+                    return True
+                else:
+                    self.log_test("Account Unfreeze", False, "Unfreeze failed", data)
+            else:
+                self.log_test("Account Unfreeze", False, f"HTTP {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("Account Unfreeze", False, f"Exception: {str(e)}")
+        return False
+    
+    def test_qr_validation(self):
+        """Test 10: POST /api/scan/validate"""
+        if not self.token:
+            self.log_test("QR Validation", False, "No authentication token available")
+            return False
+        
+        try:
+            qr_data = {
+                "qr_string": "upi://pay?pa=merchant@upi&pn=TestMerchant&am=100"
+            }
+            
+            response = self.session.post(f"{API_BASE}/scan/validate", json=qr_data)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('valid'):
+                    self.log_test("QR Validation", True, 
+                                f"UPI ID: {data.get('upi_id')}, Name: {data.get('name')}, Amount: ₹{data.get('amount', 'N/A')}")
+                    return True
+                else:
+                    self.log_test("QR Validation", False, "QR marked as invalid", data)
+            else:
+                self.log_test("QR Validation", False, f"HTTP {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("QR Validation", False, f"Exception: {str(e)}")
+        return False
+    
+    def test_chatbot(self):
+        """Test 11: POST /api/chatbot"""
+        if not self.token:
+            self.log_test("AI Chatbot", False, "No authentication token available")
+            return False
+        
+        try:
+            chat_data = {
+                "message": "How to stay safe from UPI fraud?",
+                "session_id": "test-session-001"
+            }
+            
+            response = self.session.post(f"{API_BASE}/chatbot", json=chat_data)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success') and data.get('response'):
+                    response_text = data['response'][:100] + "..." if len(data['response']) > 100 else data['response']
+                    self.log_test("AI Chatbot", True, f"Response: {response_text}")
+                    return True
+                else:
+                    self.log_test("AI Chatbot", False, "No response from chatbot", data)
+            else:
+                self.log_test("AI Chatbot", False, f"HTTP {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("AI Chatbot", False, f"Exception: {str(e)}")
+        return False
+    
+    def test_location_update(self):
+        """Test 12: POST /api/location/update"""
+        if not self.token:
+            self.log_test("Location Update", False, "No authentication token available")
+            return False
+        
+        try:
+            location_data = {
+                "latitude": 19.076,
+                "longitude": 72.877,
+                "city": "Mumbai"
+            }
+            
+            response = self.session.post(f"{API_BASE}/location/update", json=location_data)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    self.log_test("Location Update", True, data.get('message', 'Location updated'))
+                    return True
+                else:
+                    self.log_test("Location Update", False, "Location update failed", data)
+            else:
+                self.log_test("Location Update", False, f"HTTP {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("Location Update", False, f"Exception: {str(e)}")
+        return False
+    
+    def test_error_cases(self):
+        """Test error cases"""
+        print("=== Testing Error Cases ===")
+        
+        # Test 1: Login with wrong password
+        try:
+            wrong_login = {
+                "mobile": "9999999999",
+                "password": "wrongpassword"
+            }
+            response = self.session.post(f"{API_BASE}/auth/login", json=wrong_login)
+            if response.status_code == 401:
+                self.log_test("Wrong Password Login", True, "Correctly rejected invalid credentials")
+            else:
+                self.log_test("Wrong Password Login", False, f"Expected 401, got {response.status_code}")
+        except Exception as e:
+            self.log_test("Wrong Password Login", False, f"Exception: {str(e)}")
+        
+        # Test 2: Access protected endpoint without token
+        try:
+            temp_headers = self.session.headers.copy()
+            if 'Authorization' in self.session.headers:
+                del self.session.headers['Authorization']
+            
+            response = self.session.get(f"{API_BASE}/user/profile")
+            if response.status_code == 401:
+                self.log_test("No Token Access", True, "Correctly rejected request without token")
+            else:
+                self.log_test("No Token Access", False, f"Expected 401, got {response.status_code}")
+            
+            # Restore headers
+            self.session.headers.update(temp_headers)
+        except Exception as e:
+            self.log_test("No Token Access", False, f"Exception: {str(e)}")
+        
+        # Test 3: Signup with existing mobile
+        try:
+            existing_signup = {
+                "mobile": "9999999999",  # Demo user mobile
+                "password": "newpass",
+                "name": "Duplicate User"
+            }
+            response = self.session.post(f"{API_BASE}/auth/signup", json=existing_signup)
+            if response.status_code == 400:
+                self.log_test("Duplicate Mobile Signup", True, "Correctly rejected duplicate mobile")
+            else:
+                self.log_test("Duplicate Mobile Signup", False, f"Expected 400, got {response.status_code}")
+        except Exception as e:
+            self.log_test("Duplicate Mobile Signup", False, f"Exception: {str(e)}")
     
     def run_all_tests(self):
         """Run all tests in sequence"""
         print("🚀 Starting FraudX Backend API Tests")
-        print(f"📍 Testing against: {self.base_url}")
+        print(f"🌐 Testing against: {BASE_URL}")
         print("=" * 60)
         
-        # Authentication Flow
-        self.test_send_otp()
-        time.sleep(1)  # Small delay between tests
-        self.test_verify_otp()
-        time.sleep(1)
+        # Core functionality tests
+        self.test_health_check()
+        self.test_signup()
         
-        # Error Cases
-        self.test_invalid_otp()
-        time.sleep(1)
-        self.test_invalid_token()
-        time.sleep(1)
+        # Login and get token
+        if not self.test_login():
+            print("❌ Cannot proceed without authentication token")
+            return
         
-        # User Profile
-        self.test_user_profile()
-        time.sleep(1)
+        # Authenticated tests
+        self.test_get_profile()
+        self.test_get_transactions()
         
-        # Transaction Flow
-        self.test_low_amount_transaction()
-        time.sleep(1)
-        self.test_high_amount_transaction()
-        time.sleep(1)
+        # Transaction tests
+        low_risk_tx = self.test_create_low_risk_transaction()
+        high_risk_tx = self.test_create_high_risk_transaction()
         
-        # Transaction Confirmation
-        self.test_allow_transaction()
-        time.sleep(1)
-        self.test_block_transaction()
-        time.sleep(2)  # Wait for freeze
+        # Transaction action test (block the high-risk transaction)
+        if high_risk_tx:
+            self.test_transaction_action(high_risk_tx, "block")
         
-        # Account Management
-        self.test_frozen_account_transaction()
-        time.sleep(1)
+        # Account management
         self.test_unfreeze_account()
-        time.sleep(1)
         
-        # Transaction History
-        self.test_transaction_history()
-        time.sleep(1)
+        # Other features
+        self.test_qr_validation()
+        self.test_chatbot()
+        self.test_location_update()
         
-        # Error Cases
-        self.test_insufficient_balance()
-        time.sleep(1)
-        self.test_missing_fields()
+        # Error cases
+        self.test_error_cases()
         
-        # Print summary
-        self.print_summary()
-    
-    def print_summary(self):
-        """Print test summary"""
-        print("\n" + "=" * 60)
+        # Summary
+        print("=" * 60)
         print("📊 TEST SUMMARY")
         print("=" * 60)
         
-        passed = sum(1 for test in self.test_results if test["success"])
-        failed = len(self.test_results) - passed
+        passed = sum(1 for result in self.test_results if result['success'])
+        total = len(self.test_results)
         
-        print(f"Total Tests: {len(self.test_results)}")
-        print(f"✅ Passed: {passed}")
-        print(f"❌ Failed: {failed}")
+        print(f"✅ Passed: {passed}/{total}")
+        print(f"❌ Failed: {total - passed}/{total}")
         
-        if failed > 0:
-            print("\n🚨 FAILED TESTS:")
-            for test in self.test_results:
-                if not test["success"]:
-                    print(f"   ❌ {test['test']}: {test['details']}")
+        if total - passed > 0:
+            print("\n🔍 Failed Tests:")
+            for result in self.test_results:
+                if not result['success']:
+                    print(f"   • {result['test']}: {result['details']}")
         
-        print(f"\n🎯 Success Rate: {(passed/len(self.test_results)*100):.1f}%")
+        print(f"\n🏁 Testing completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        return passed, total
 
 if __name__ == "__main__":
-    tester = FraudXAPITester()
-    tester.run_all_tests()
+    tester = FraudXTester()
+    passed, total = tester.run_all_tests()
+    
+    # Exit with appropriate code
+    sys.exit(0 if passed == total else 1)

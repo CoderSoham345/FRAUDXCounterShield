@@ -198,6 +198,22 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🚨 Safety & Reporting</Text>
+          <View style={styles.card}>
+            <TouchableOpacity style={styles.helpRow} onPress={() => router.push('/report-fraud')}>
+              <Ionicons name="warning" size={20} color="#ef4444" />
+              <Text style={styles.helpText}>Report Fraud</Text>
+              <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.helpRow, { borderBottomWidth: 0 }]} onPress={() => router.push('/chatbot')}>
+              <Ionicons name="chatbubble-ellipses" size={20} color="#8b5cf6" />
+              <Text style={styles.helpText}>AI Security Assistant</Text>
+              <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out" size={20} color="#ef4444" />
           <Text style={styles.logoutText}>Logout from FraudX</Text>
