@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,104 +7,109 @@ import { Ionicons } from '@expo/vector-icons';
 export default function WelcomeScreen() {
   const router = useRouter();
   const { token, isLoading } = useAuth();
-  const fadeAnim = new Animated.Value(0);
-  const [showOptions, setShowOptions] = useState(false);
 
   useEffect(() => {
-    if (!isLoading) {
-      if (token) {
-        router.replace('/(tabs)/home');
-      } else {
-        setTimeout(() => {
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-          }).start();
-          setShowOptions(true);
-        }, 1500);
-      }
+    if (!isLoading && token) {
+      router.replace('/(tabs)/home');
     }
   }, [isLoading, token]);
 
-  if (!showOptions) {
-    return (
-      <View style={styles.splashContainer}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logo}>🛡️</Text>
-          <Text style={styles.title}>FraudX</Text>
-          <Text style={styles.tagline}>Smart AI Protection for Payments</Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+    <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.welcomeEmoji}>👋</Text>
-        <Text style={styles.welcomeTitle}>Welcome to FraudX</Text>
-        <Text style={styles.welcomeSubtitle}>Your AI-Powered Payment Guardian</Text>
+        <View style={styles.logoSection}>
+          <View style={styles.shieldCircle}>
+            <Ionicons name="shield-checkmark" size={64} color="#3b82f6" />
+          </View>
+          <Text style={styles.title}>FraudX</Text>
+          <Text style={styles.tagline}>Soch samajh ke pay karo!</Text>
+          <Text style={styles.subtitle}>AI-Powered Payment Guardian</Text>
+        </View>
 
         <View style={styles.optionsContainer}>
           <TouchableOpacity 
             style={styles.optionCard}
             onPress={() => router.push('/login')}
           >
-            <View style={styles.optionIcon}>
-              <Ionicons name="log-in" size={32} color="#3b82f6" />
+            <View style={[styles.optionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
+              <Ionicons name="log-in" size={28} color="#3b82f6" />
             </View>
-            <Text style={styles.optionTitle}>Already a Member</Text>
-            <Text style={styles.optionSubtitle}>Login to your account</Text>
-            <View style={styles.optionButton}>
-              <Text style={styles.optionButtonText}>Continue →</Text>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Login</Text>
+              <Text style={styles.optionSubtitle}>Already have an account</Text>
             </View>
+            <Ionicons name="chevron-forward" size={22} color="#6b7280" />
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.optionCard}
             onPress={() => router.push('/create-account')}
           >
-            <View style={styles.optionIcon}>
-              <Ionicons name="person-add" size={32} color="#10b981" />
+            <View style={[styles.optionIcon, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+              <Ionicons name="person-add" size={28} color="#10b981" />
             </View>
-            <Text style={styles.optionTitle}>New User</Text>
-            <Text style={styles.optionSubtitle}>Create your account</Text>
-            <View style={[styles.optionButton, { backgroundColor: '#10b981' }]}>
-              <Text style={styles.optionButtonText}>Get Started →</Text>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Create Account</Text>
+              <Text style={styles.optionSubtitle}>New to FraudX</Text>
             </View>
+            <Ionicons name="chevron-forward" size={22} color="#6b7280" />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.optionCard, styles.demoCard]}
+            onPress={() => router.push('/login')}
+          >
+            <View style={[styles.optionIcon, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+              <Ionicons name="play-circle" size={28} color="#f59e0b" />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Try Demo</Text>
+              <Text style={styles.optionSubtitle}>Explore with demo data</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#6b7280" />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity 
-          style={styles.skipButton}
-          onPress={() => router.push('/login')}
-        >
-          <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+        <View style={styles.footer}>
+          <Ionicons name="lock-closed" size={14} color="#10b981" />
+          <Text style={styles.footerText}>End-to-End Encrypted & AI Protected</Text>
+        </View>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  splashContainer: { flex: 1, backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' },
-  logoContainer: { alignItems: 'center' },
-  logo: { fontSize: 80, marginBottom: 16 },
-  title: { fontSize: 48, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-  tagline: { fontSize: 14, color: '#9ca3af' },
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  content: { flex: 1, paddingHorizontal: 24, justifyContent: 'center', alignItems: 'center' },
-  welcomeEmoji: { fontSize: 64, marginBottom: 16 },
-  welcomeTitle: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginBottom: 8, textAlign: 'center' },
-  welcomeSubtitle: { fontSize: 16, color: '#9ca3af', marginBottom: 48, textAlign: 'center' },
-  optionsContainer: { width: '100%', gap: 16, marginBottom: 24 },
-  optionCard: { backgroundColor: '#1f2937', borderRadius: 20, padding: 24, borderWidth: 2, borderColor: '#374151', alignItems: 'center' },
-  optionIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(59, 130, 246, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  optionTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
-  optionSubtitle: { fontSize: 14, color: '#9ca3af', marginBottom: 16 },
-  optionButton: { backgroundColor: '#3b82f6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  optionButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  skipButton: { marginTop: 16 },
-  skipText: { color: '#6b7280', fontSize: 14 },
+  content: { flex: 1, paddingHorizontal: 24, justifyContent: 'center' },
+  logoSection: { alignItems: 'center', marginBottom: 48 },
+  shieldCircle: {
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20, borderWidth: 3, borderColor: 'rgba(59, 130, 246, 0.3)',
+  },
+  title: { fontSize: 44, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
+  tagline: { fontSize: 14, color: '#ef4444', fontWeight: '600', marginBottom: 4 },
+  subtitle: { fontSize: 14, color: '#9ca3af' },
+  optionsContainer: { gap: 12, marginBottom: 32 },
+  optionCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1f2937', borderRadius: 16,
+    padding: 18, gap: 16,
+    borderWidth: 1, borderColor: '#374151',
+  },
+  demoCard: { borderColor: 'rgba(245, 158, 11, 0.3)' },
+  optionIcon: {
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  optionTextContainer: { flex: 1 },
+  optionTitle: { fontSize: 17, fontWeight: '600', color: '#fff', marginBottom: 2 },
+  optionSubtitle: { fontSize: 13, color: '#9ca3af' },
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6,
+  },
+  footerText: { fontSize: 12, color: '#10b981' },
 });
